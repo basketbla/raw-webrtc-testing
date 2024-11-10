@@ -1,37 +1,17 @@
-// webrtcHttp.ts
 import { loadPyodide, PyodideInterface } from "pyodide";
+import { handleResponseFromServer } from "./main";
 
-// Define request and response types
+// Define types for WebRTC messages
 interface RequestMessage {
   type: "request";
-  requestId: string;
   path: string;
   method: string;
-  body?: any;
 }
 
 interface ResponseMessage {
   type: "response";
-  requestId: string;
   data: any;
 }
-
-interface IceCandidateMessage {
-  type: "ice-candidate";
-  candidate: RTCIceCandidateInit;
-}
-
-interface OfferMessage {
-  type: "offer";
-  offer: RTCSessionDescriptionInit;
-}
-
-interface AnswerMessage {
-  type: "answer";
-  answer: RTCSessionDescriptionInit;
-}
-
-type SignalingMessage = IceCandidateMessage | OfferMessage | AnswerMessage;
 
 const broadcastChannel = new BroadcastChannel("webrtc_channel");
 let localConnection: RTCPeerConnection | null = null;
@@ -39,24 +19,71 @@ let remoteConnection: RTCPeerConnection | null = null;
 let sendChannel: RTCDataChannel | null = null;
 let receiveChannel: RTCDataChannel | null = null;
 
+let pyodide: PyodideInterface | null = null;
+
 /**
- * Starts a WebRTC connection and sends an offer
+ * Initializes Pyodide and sets up the router (server-side)
  */
-export async function startConnection(): Promise<void> {
+export async function initializePyodide(): Promise<void> {
+  if (!pyodide) {
+    pyodide = await loadPyodide({
+      indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.3/full/",
+    });
+    console.log("Pyodide loaded.");
+
+    pyodide.runPython(`
+      routes = {}
+      def route(path):
+          def decorator(func):
+              routes[path] = func
+              return func
+          return decorator
+      @route("/")
+      def home():
+          return "Hello, World!"
+      @route("/greet")
+      def greet():
+          return "Hello from the greet route!"
+      def handle_request(path, method="GET"):
+          handler = routes.get(path)
+          return handler() if handler else "404 Not Found"
+    `);
+    console.log("Python router initialized.");
+  }
+}
+
+/**
+ * Sets up WebRTC connection for the server and listens for incoming messages
+ */
+export async function startServerConnection(): Promise<void> {
   localConnection = new RTCPeerConnection();
   sendChannel = localConnection.createDataChannel("sendChannel");
 
-  sendChannel.onopen = () => console.log("Data channel is open");
-  sendChannel.onmessage = (event) => handleIncomingMessage(event.data);
+  sendChannel.onopen = () => console.log("Data channel open on server");
+  sendChannel.onmessage = async (event) => {
+    const request: RequestMessage = JSON.parse(event.data);
+    const response = await handleRequestInPyodide(request);
+    sendChannel?.send(JSON.stringify({ type: "response", data: response }));
+  };
 
-  // Send ICE candidates over the BroadcastChannel for signaling
   localConnection.onicecandidate = ({ candidate }) => {
     if (candidate) {
-      const iceCandidateMessage: IceCandidateMessage = {
+      broadcastChannel.postMessage({
         type: "ice-candidate",
         candidate: candidate.toJSON(),
-      };
-      broadcastChannel.postMessage(iceCandidateMessage);
+      });
+    }
+  };
+
+  // Listen for signaling messages
+  broadcastChannel.onmessage = async (event) => {
+    const { type, answer, candidate } = event.data;
+    if (type === "answer" && localConnection) {
+      await localConnection.setRemoteDescription(answer);
+      console.log("Server received answer from client.");
+    } else if (type === "ice-candidate" && localConnection) {
+      await localConnection.addIceCandidate(new RTCIceCandidate(candidate));
+      console.log("Server received ICE candidate from client.");
     }
   };
 
@@ -67,150 +94,64 @@ export async function startConnection(): Promise<void> {
 }
 
 /**
- * Handle incoming messages for signaling and data exchange
+ * Sets up WebRTC connection for the client and listens for responses
  */
-broadcastChannel.onmessage = async (event: MessageEvent) => {
-  const data: SignalingMessage = event.data;
+export async function startClientConnection(): Promise<void> {
+  remoteConnection = new RTCPeerConnection();
 
-  if (data.type === "offer") {
-    remoteConnection = new RTCPeerConnection();
+  remoteConnection.ondatachannel = (event) => {
+    receiveChannel = event.channel;
+    receiveChannel.onopen = () => console.log("Data channel open on client");
+    receiveChannel.onmessage = (e) => handleResponseFromServer(e.data);
+  };
 
-    remoteConnection.onicecandidate = ({ candidate }) => {
-      if (candidate) {
-        const iceCandidateMessage: IceCandidateMessage = {
-          type: "ice-candidate",
-          candidate: candidate.toJSON(),
-        };
-        broadcastChannel.postMessage(iceCandidateMessage);
-      }
-    };
-
-    remoteConnection.ondatachannel = (event: RTCDataChannelEvent) => {
-      receiveChannel = event.channel;
-      receiveChannel.onopen = () => console.log("Receive channel is open");
-      receiveChannel.onmessage = (e) => handleIncomingMessage(e.data);
-    };
-
-    await remoteConnection.setRemoteDescription(data.offer);
-    const answer = await remoteConnection.createAnswer();
-    await remoteConnection.setLocalDescription(answer);
-    broadcastChannel.postMessage({ type: "answer", answer });
-  } else if (data.type === "answer" && localConnection) {
-    await localConnection.setRemoteDescription(data.answer);
-  } else if (data.type === "ice-candidate") {
-    const peerConnection = localConnection || remoteConnection;
-    if (peerConnection && data.candidate) {
-      await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+  remoteConnection.onicecandidate = ({ candidate }) => {
+    if (candidate) {
+      broadcastChannel.postMessage({
+        type: "ice-candidate",
+        candidate: candidate.toJSON(),
+      });
     }
-  }
-};
+  };
+
+  broadcastChannel.onmessage = async (event) => {
+    const { type, offer, answer, candidate } = event.data;
+    if (type === "offer") {
+      await remoteConnection?.setRemoteDescription(offer);
+      const answer = await remoteConnection?.createAnswer();
+      await remoteConnection?.setLocalDescription(answer);
+      broadcastChannel.postMessage({ type: "answer", answer });
+    } else if (type === "answer" && localConnection) {
+      await localConnection.setRemoteDescription(answer);
+    } else if (type === "ice-candidate") {
+      const peerConnection = localConnection || remoteConnection;
+      if (peerConnection && candidate) {
+        await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+      }
+    }
+  };
+}
 
 /**
- * Sends a JSON-based request over WebRTC
- * @param request - The request object with path, method, body
+ * Sends a message over WebRTC from the client
  */
-export function sendRequest(request: RequestMessage): void {
-  if (sendChannel && sendChannel.readyState === "open") {
-    sendChannel.send(JSON.stringify(request));
+export function sendMessage(request: RequestMessage): void {
+  if (receiveChannel && receiveChannel.readyState === "open") {
+    receiveChannel.send(JSON.stringify(request));
   } else {
     console.error("Data channel is not open. Cannot send request.");
   }
 }
 
 /**
- * Handles incoming JSON-based messages on the data channel
- * @param data - Incoming JSON string from data channel
+ * Forwards a request to the Pyodide router
  */
-async function handleIncomingMessage(data: string): Promise<void> {
-  const message = JSON.parse(data);
-
-  if (message.type === "request") {
-    const response = await forwardToFlask(message);
-    if (sendChannel) {
-      const responseMessage: ResponseMessage = {
-        type: "response",
-        requestId: message.requestId,
-        data: response,
-      };
-      sendChannel.send(JSON.stringify(responseMessage));
-    }
-  } else if (message.type === "response") {
-    console.log("Received response:", message.data);
-  }
-}
-
-let pyodide: PyodideInterface | null = null;
-
-/**
- * Initializes Pyodide and loads necessary packages (run this once at startup)
- */
-export async function initializePyodide(): Promise<void> {
-  if (!pyodide) {
-    // Load Pyodide
-    pyodide = await loadPyodide({
-      indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.3/full/",
-    });
-    console.log("Pyodide loaded.");
-
-    // Load Flask and other required packages
-    await pyodide.loadPackage("micropip");
-    const micropip = pyodide.pyimport("micropip");
-    await micropip.install("flask");
-
-    console.log("Flask and other packages loaded.");
-
-    // Define a basic router in Python to simulate Flask-like routing
-    pyodide.runPython(`
-        # Basic router dictionary to simulate routing
-        routes = {}
-
-        def route(path):
-            def decorator(func):
-                routes[path] = func
-                return func
-            return decorator
-
-        @route("/")
-        def home():
-            return "Hello, World!"
-
-        @route("/greet")
-        def greet():
-            return "Hello from the greet route!"
-
-        def handle_request(path, method="GET", data=None):
-            handler = routes.get(path)
-            if handler:
-                return handler()
-            else:
-                return "404 Not Found"
-    `);
-    console.log("Custom Python router set up.");
-  }
-}
-/**
- * Forwards a request to a Flask app running in Wasm and gets the response
- * @param request - The JSON request object
- */
-export async function forwardToFlask(request: {
-  path: string;
-  method: string;
-  body?: any;
-}): Promise<any> {
-  if (!pyodide) {
-    throw new Error(
-      "Pyodide has not been initialized. Please call initializePyodide() first."
-    );
-  }
-
-  const { path, method, body } = request;
-
-  // Call the custom `handle_request` function in Python
-  const response = await pyodide.runPythonAsync(`
-    handle_request("${path}", "${method}", ${
-    !!body ? JSON.stringify(body) : "None"
-  })
-  `);
-
-  return response;
+async function handleRequestInPyodide(
+  request: RequestMessage
+): Promise<string> {
+  const { path, method } = request;
+  const response = await pyodide?.runPythonAsync(
+    `handle_request("${path}", "${method}")`
+  );
+  return response ?? "Error handling request in Pyodide";
 }
