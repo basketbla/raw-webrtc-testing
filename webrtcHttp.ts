@@ -1,5 +1,4 @@
 import { loadPyodide, PyodideInterface } from "pyodide";
-import { handleResponseFromServer } from "./old-main";
 
 // Define types for WebRTC messages
 interface RequestMessage {
@@ -18,44 +17,21 @@ let localConnection: RTCPeerConnection | null = null;
 let remoteConnection: RTCPeerConnection | null = null;
 let sendChannel: RTCDataChannel | null = null;
 let receiveChannel: RTCDataChannel | null = null;
-
 let pyodide: PyodideInterface | null = null;
 
-/**
- * Initializes Pyodide and sets up the router (server-side)
- */
 export async function initializePyodide(): Promise<void> {
   if (!pyodide) {
     pyodide = await loadPyodide({
       indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.3/full/",
     });
     console.log("Pyodide loaded.");
-
-    pyodide.runPython(`
-      routes = {}
-      def route(path):
-          def decorator(func):
-              routes[path] = func
-              return func
-          return decorator
-      @route("/")
-      def home():
-          return "Hello, World!"
-      @route("/greet")
-      def greet():
-          return "Hello from the greet route!"
-      def handle_request(path, method="GET"):
-          handler = routes.get(path)
-          return handler() if handler else "404 Not Found"
-    `);
-    console.log("Python router initialized.");
   }
 }
 
-/**
- * Sets up WebRTC connection for the server and listens for incoming messages
- */
-export async function startServerConnection(): Promise<void> {
+// Start server connection and listen for incoming messages
+export async function startServerConnection(
+  handleResponse: (data: string) => void
+): Promise<void> {
   localConnection = new RTCPeerConnection();
   sendChannel = localConnection.createDataChannel("sendChannel");
 
@@ -75,7 +51,6 @@ export async function startServerConnection(): Promise<void> {
     }
   };
 
-  // Listen for signaling messages
   broadcastChannel.onmessage = async (event) => {
     const { type, answer, candidate } = event.data;
     if (type === "answer" && localConnection) {
@@ -87,22 +62,21 @@ export async function startServerConnection(): Promise<void> {
     }
   };
 
-  // Create and send an offer
   const offer = await localConnection.createOffer();
   await localConnection.setLocalDescription(offer);
   broadcastChannel.postMessage({ type: "offer", offer });
 }
 
-/**
- * Sets up WebRTC connection for the client and listens for responses
- */
-export async function startClientConnection(): Promise<void> {
+// Start client connection and listen for responses
+export async function startClientConnection(
+  handleResponse: (data: string) => void
+): Promise<void> {
   remoteConnection = new RTCPeerConnection();
 
   remoteConnection.ondatachannel = (event) => {
     receiveChannel = event.channel;
     receiveChannel.onopen = () => console.log("Data channel open on client");
-    receiveChannel.onmessage = (e) => handleResponseFromServer(e.data);
+    receiveChannel.onmessage = (e) => handleResponse(e.data);
   };
 
   remoteConnection.onicecandidate = ({ candidate }) => {
@@ -121,31 +95,21 @@ export async function startClientConnection(): Promise<void> {
       const answer = await remoteConnection?.createAnswer();
       await remoteConnection?.setLocalDescription(answer);
       broadcastChannel.postMessage({ type: "answer", answer });
-    } else if (type === "answer" && localConnection) {
-      await localConnection.setRemoteDescription(answer);
-    } else if (type === "ice-candidate") {
-      const peerConnection = localConnection || remoteConnection;
-      if (peerConnection && candidate) {
-        await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-      }
+    } else if (type === "ice-candidate" && remoteConnection) {
+      await remoteConnection.addIceCandidate(new RTCIceCandidate(candidate));
     }
   };
 }
 
-/**
- * Sends a message over WebRTC from the client
- */
 export function sendMessage(request: RequestMessage): void {
-  if (receiveChannel && receiveChannel.readyState === "open") {
-    receiveChannel.send(JSON.stringify(request));
+  if (sendChannel && sendChannel.readyState === "open") {
+    sendChannel.send(JSON.stringify(request));
   } else {
     console.error("Data channel is not open. Cannot send request.");
   }
 }
 
-/**
- * Forwards a request to the Pyodide router
- */
+// Handle a request in Pyodide and return the response
 async function handleRequestInPyodide(
   request: RequestMessage
 ): Promise<string> {
