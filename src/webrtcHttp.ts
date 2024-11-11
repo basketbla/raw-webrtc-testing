@@ -1,5 +1,5 @@
 import { loadPyodide, PyodideInterface } from "pyodide";
-import { handleResponseFromServer } from "./main";
+import { handleResponseFromServer } from "./old-main";
 
 // Define types for WebRTC messages
 interface RequestMessage {

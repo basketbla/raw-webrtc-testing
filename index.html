@@ -1,25 +1,4 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WebRTC Cross-Tab Communication</title>
-</head>
 <body>
-  <h1>WebRTC Cross-Tab Communication</h1>
-  
-  <!-- Buttons to start server or client -->
-  <button id="startServer">Start Server</button>
-  <button id="startClient">Start Client</button>
-  
-  <!-- Input field and div to display messages -->
-  <input type="text" id="message" placeholder="Type a message">
-  <div id="messages"></div>
-
-  <h1>In-Browser Flask Code Editor</h1>
-  <div id="editor" style="width:100%; height:500px; border:1px solid #ccc;"></div>
-
-  <!-- JavaScript file to handle main logic -->
-  <script type="module" src="/src/main.ts"></script>
+  <div id="root"></div>
+  <script type="module" src="/main.tsx"></script>
 </body>
-</html>
