@@ -9,7 +9,7 @@ import {
   initializePyodide,
   sendRequest,
   setupWebRTCConnection,
-} from "./webrtcHttp";
+} from "./lib/webrtcHttp";
 
 const App: React.FC = () => {
   const [isServer, setIsServer] = useState(false);
