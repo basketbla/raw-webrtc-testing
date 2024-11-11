@@ -1,9 +1,13 @@
+import { initializeMonacoEditor } from "./monaco-editor";
 import {
   initializePyodide,
   sendMessage,
   startClientConnection,
   startServerConnection,
 } from "./webrtcHttp";
+
+// Initialize the Monaco Editor
+initializeMonacoEditor();
 
 const startServerButton = document.getElementById(
   "startServer"
