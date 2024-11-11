@@ -2,6 +2,7 @@ import { loadPyodide, PyodideInterface } from "pyodide";
 import React, { useEffect, useState } from "react";
 import FlaskEditor from "./components/FlaskEditor";
 import Messages from "./components/Messages";
+import { Button } from "./components/ui/button";
 import {
   handleClientMessage,
   handleServerMessage,
@@ -52,15 +53,17 @@ const App: React.FC = () => {
   };
 
   return (
-    <div>
-      <h1>WebRTC Flask Editor</h1>
+    <div className="container mx-auto">
+      <h1 className="text-3xl font-bold">WebRTC Flask Editor</h1>
       {isServer && <FlaskEditor pyodide={myPiodide} />}
-      <button onClick={startServer}>Start Server</button>
-      <button onClick={startClient}>Start Client</button>
+      <div className="flex flex-row gap-3 my-4">
+        <Button onClick={startServer}>Start Server</Button>
+        <Button onClick={startClient}>Start Client</Button>
+      </div>
       {isServer ? (
         <p>Server is running. Waiting for client requests...</p>
       ) : (
-        <button onClick={sendRequestToServer}>Send Request</button>
+        <Button onClick={sendRequestToServer}>Send Request</Button>
       )}
       <Messages messages={messages} />
     </div>

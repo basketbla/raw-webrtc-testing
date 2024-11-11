@@ -20,7 +20,12 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true,
 
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    },
+
     "jsx": "react-jsx",
   },
-  "include": ["src", "webrtcHttp.ts", "main.tsx"]
+  "include": ["src"]
 }

@@ -1,6 +1,7 @@
 import Editor from "@monaco-editor/react";
 import { PyodideInterface } from "pyodide";
 import React, { useState } from "react";
+import { Button } from "./ui/button";
 
 type FlaskEditorProps = {
   pyodide: PyodideInterface | null;
@@ -49,7 +50,7 @@ def handle_request(path, method="GET", data=None):
   };
 
   return (
-    <div style={{ border: "1px solid #ccc", marginBottom: "20px" }}>
+    <div>
       <Editor
         height="300px"
         language="python"
@@ -57,9 +58,9 @@ def handle_request(path, method="GET", data=None):
         onChange={handleEditorChange}
         theme="vs-dark"
       />
-      <button onClick={runCode} style={{ marginTop: "10px" }}>
-        Run
-      </button>
+      <Button onClick={runCode} style={{ marginTop: "10px" }}>
+        Run Python
+      </Button>
     </div>
   );
 };
