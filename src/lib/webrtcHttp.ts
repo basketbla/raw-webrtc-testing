@@ -1,6 +1,6 @@
 import { loadPyodide, PyodideInterface } from "pyodide";
 
-interface RequestMessage {
+export interface RequestMessage {
   type: "request";
   path: string;
   method: string;
@@ -11,33 +11,68 @@ interface ResponseMessage {
   data: any;
 }
 
-const broadcastChannel = new BroadcastChannel("webrtc_channel");
 let peerConnection: RTCPeerConnection;
 let dataChannel: RTCDataChannel | null = null;
-export var pyodide: PyodideInterface | null = null;
 
-// Set up WebRTC connection and exchange ICE candidates
-function setupWebRTCConnection(
+export async function initializePyodide(): Promise<PyodideInterface> {
+  const pyodide = await loadPyodide({
+    indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.3/full/",
+  });
+  console.log("Pyodide loaded.");
+  return pyodide;
+}
+
+export function setupWebRTCConnection(
+  broadcastChannel: BroadcastChannel,
   role: "server" | "client",
   handleResponse: (data: string) => void
 ) {
-  console.log(`Setting up WebRTC connection as ${role}...`);
   peerConnection = new RTCPeerConnection();
 
   if (role === "server") {
-    // Server creates data channel and offer
     dataChannel = peerConnection.createDataChannel("dataChannel");
     setupDataChannel(handleResponse);
-    createOffer();
+
+    // Server waits for client "ready" message
+    broadcastChannel.onmessage = async (event) => {
+      console.log(event);
+      if (event.data === "ready") {
+        console.log("Client is ready, server initiating connection...");
+        createOffer(broadcastChannel);
+      } else {
+        const { type, answer, candidate } = event.data;
+
+        if (type === "answer" && role === "server") {
+          console.log("Server received answer from client");
+          await peerConnection.setRemoteDescription(answer);
+        } else if (type === "ice-candidate" && candidate) {
+          await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+        }
+      }
+    };
+
+    // ICE candidate handling for both roles
+    peerConnection.onicecandidate = ({ candidate }) => {
+      if (candidate) {
+        broadcastChannel.postMessage({
+          type: "ice-candidate",
+          candidate: candidate.toJSON(),
+        });
+      }
+    };
+
+    return;
   } else {
-    // Client receives data channel
+    // Client sends a "ready" signal and waits for the offer
+    broadcastChannel.postMessage("ready");
+
     peerConnection.ondatachannel = (event) => {
       dataChannel = event.channel;
       setupDataChannel(handleResponse);
     };
   }
 
-  // Handle ICE candidates
+  // ICE candidate handling for both roles
   peerConnection.onicecandidate = ({ candidate }) => {
     if (candidate) {
       broadcastChannel.postMessage({
@@ -47,9 +82,8 @@ function setupWebRTCConnection(
     }
   };
 
-  // Signaling event listener for exchanging offers/answers and ICE candidates
   broadcastChannel.onmessage = async (event) => {
-    const { type, offer, answer, candidate } = event.data;
+    const { type, offer, candidate } = event.data;
 
     if (type === "offer" && role === "client") {
       console.log("Client received offer from server");
@@ -57,9 +91,6 @@ function setupWebRTCConnection(
       const answer = await peerConnection.createAnswer();
       await peerConnection.setLocalDescription(answer);
       broadcastChannel.postMessage({ type: "answer", answer });
-    } else if (type === "answer" && role === "server") {
-      console.log("Server received answer from client");
-      await peerConnection.setRemoteDescription(answer);
     } else if (type === "ice-candidate" && candidate) {
       await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
     }
@@ -75,7 +106,7 @@ function setupDataChannel(handleResponse: (data: string) => void) {
 }
 
 // Server-only: Create and send an offer
-function createOffer() {
+function createOffer(broadcastChannel: BroadcastChannel) {
   peerConnection.createOffer().then((offer) => {
     peerConnection.setLocalDescription(offer);
     broadcastChannel.postMessage({ type: "offer", offer });
@@ -83,23 +114,27 @@ function createOffer() {
   });
 }
 
-// Initialize Pyodide with Flask routing
-export async function initializePyodide(): Promise<void> {
-  if (!pyodide) {
-    pyodide = await loadPyodide({
-      indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.3/full/",
-    });
-    console.log("Pyodide loaded.");
-
-    // Load Flask and other required packages
-    await pyodide.loadPackage("micropip");
-    const micropip = pyodide.pyimport("micropip");
-    await micropip.install("flask");
-    console.log("Flask and other packages loaded.");
+// Send a request over the WebRTC data channel
+export function sendRequest(request: RequestMessage): void {
+  if (dataChannel && dataChannel.readyState === "open") {
+    dataChannel.send(JSON.stringify(request));
+    console.log("Request sent over data channel:", request);
+  } else {
+    console.error("Data channel is not open. Cannot send request.");
   }
 }
 
-// Handle request in Pyodide
+// Client message handler
+export function handleClientMessage(
+  data: string,
+  addMessage: (msg: string) => void
+) {
+  const message = JSON.parse(data);
+  if (message.type === "response") {
+    addMessage(`Response from server: ${message.data}`);
+  }
+}
+
 async function handleRequestInPyodide(
   request: RequestMessage,
   pyodide: PyodideInterface
@@ -112,7 +147,6 @@ async function handleRequestInPyodide(
   return response ?? "Error handling request in Pyodide";
 }
 
-// Server message handler
 export function handleServerMessage(
   request: RequestMessage,
   pyodide: PyodideInterface | null
@@ -128,25 +162,3 @@ export function handleServerMessage(
     console.log("Response sent to client:", response);
   });
 }
-
-// Client message handler
-export function handleClientMessage(
-  data: string,
-  addMessage: (msg: string) => void
-) {
-  const message = JSON.parse(data);
-  if (message.type === "response") {
-    addMessage(`Response from server: ${message.data}`);
-  }
-}
-
-// Send a request over WebRTC data channel
-export function sendRequest(request: RequestMessage): void {
-  if (dataChannel && dataChannel.readyState === "open") {
-    dataChannel.send(JSON.stringify(request));
-  } else {
-    console.error("Data channel is not open. Cannot send request.");
-  }
-}
-
-export { setupWebRTCConnection };

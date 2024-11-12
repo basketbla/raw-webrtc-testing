@@ -1,5 +1,6 @@
-import { loadPyodide, PyodideInterface } from "pyodide";
-import React, { useEffect, useState } from "react";
+import { PyodideInterface } from "pyodide";
+import React, { useEffect, useRef, useState } from "react";
+import { v4 as uuidv4 } from "uuid";
 import FlaskEditor from "./components/FlaskEditor";
 import Messages from "./components/Messages";
 import { Button } from "./components/ui/button";
@@ -14,38 +15,52 @@ import {
 const App: React.FC = () => {
   const [isServer, setIsServer] = useState(false);
   const [messages, setMessages] = useState<string[]>([]);
+  const [sessionUUID, setSessionUUID] = useState<string>("");
+  const [clientUUID, setClientUUID] = useState<string>("");
   const [myPiodide, setMyPiodide] = useState<PyodideInterface | null>(null);
+  const broadcastChannelRef = useRef<BroadcastChannel>();
 
-  // Initialize Pyodide on mount and save to state
   useEffect(() => {
-    const initializePyodide = async () => {
-      const pyodideInstance = await loadPyodide({
-        indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.3/full/",
-      });
-      setMyPiodide(pyodideInstance);
+    const initializePyodideInstance = async () => {
+      const pyodideInstance = await initializePyodide();
+      setMyPiodide(pyodideInstance ?? null);
       console.log("Pyodide initialized.");
     };
-
-    initializePyodide();
+    initializePyodideInstance();
   }, []);
 
   const addMessage = (message: string) =>
     setMessages((prev) => [...prev, message]);
 
-  const startServer = async () => {
+  const startServer = () => {
     setIsServer(true);
-    setupWebRTCConnection("server", (data) => {
+    const uuid = uuidv4();
+    setSessionUUID(uuid);
+
+    broadcastChannelRef.current = new BroadcastChannel(
+      `webrtc_channel_${uuid}`
+    );
+
+    // Server listens for client "ready" message before starting WebRTC connection
+    setupWebRTCConnection(broadcastChannelRef.current, "server", (data) => {
       handleServerMessage(JSON.parse(data), myPiodide);
     });
-    await initializePyodide(); // Load Pyodide and set up Flask
+    console.log("Server mode enabled with UUID:", uuid);
   };
 
-  // NOTE: current setup, need to click client one first.
   const startClient = () => {
     setIsServer(false);
-    setupWebRTCConnection("client", (data) => {
-      handleClientMessage(data, addMessage);
-    });
+    if (clientUUID) {
+      broadcastChannelRef.current = new BroadcastChannel(
+        `webrtc_channel_${clientUUID}`
+      );
+      setupWebRTCConnection(broadcastChannelRef.current, "client", (data) => {
+        handleClientMessage(data, addMessage);
+      });
+      console.log("Client connected to server with UUID:", clientUUID);
+    } else {
+      console.error("Client UUID is not provided.");
+    }
   };
 
   const sendRequestToServer = () => {
@@ -61,9 +76,23 @@ const App: React.FC = () => {
         <Button onClick={startClient}>Start Client</Button>
       </div>
       {isServer ? (
-        <p>Server is running. Waiting for client requests...</p>
+        <>
+          <p>
+            Server is running. Session ID: <strong>{sessionUUID}</strong>
+          </p>
+          <p>Waiting for client requests...</p>
+        </>
       ) : (
-        <Button onClick={sendRequestToServer}>Send Request</Button>
+        <div>
+          <input
+            type="text"
+            placeholder="Enter Session ID"
+            value={clientUUID}
+            onChange={(e) => setClientUUID(e.target.value)}
+            className="border p-2"
+          />
+          <Button onClick={sendRequestToServer}>Send Request</Button>
+        </div>
       )}
       <Messages messages={messages} />
     </div>
