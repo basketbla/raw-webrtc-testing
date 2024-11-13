@@ -250,6 +250,7 @@ function connectToSignalingServer(
   };
 
   signalingSocket.onmessage = (event) => {
+    console.log("Received message from signaling server:");
     console.log(event);
     const message = JSON.parse(event.data);
     handleSignalingMessage(message, role, clientId ?? "");
@@ -292,12 +293,7 @@ function handleSignalingMessage(
 
 // Send message over the signaling server
 function sendSignalingMessage(message: WebsocketMessage) {
-  console.log("in send signal message");
-  console.log(signalingSocket);
-  console.log(signalingSocket?.readyState);
   if (signalingSocket && signalingSocket.readyState === WebSocket.OPEN) {
-    console.log("actually sending message");
-    console.log(message);
     signalingSocket.send(JSON.stringify(message));
   }
 }

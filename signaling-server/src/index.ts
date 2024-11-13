@@ -70,7 +70,11 @@ wss.on("connection", (ws) => {
         const targetServer = servers.get(message.serverName);
         if (targetServer) {
           targetServer.ws.send(
-            JSON.stringify({ type: "ready", from: message.clientId })
+            JSON.stringify({
+              type: "ready",
+              from: message.clientId,
+              serverName: message.serverName,
+            })
           );
         }
         break;
