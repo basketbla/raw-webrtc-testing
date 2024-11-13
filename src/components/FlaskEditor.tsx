@@ -1,6 +1,6 @@
 import Editor from "@monaco-editor/react";
 import { PyodideInterface } from "pyodide";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Button } from "./ui/button";
 
 type FlaskEditorProps = {
@@ -48,6 +48,13 @@ def handle_request(path, method="GET", data=None):
       console.error("Error executing code in Pyodide:", error);
     }
   };
+
+  // run code once when pyodide loads
+  useEffect(() => {
+    if (!!pyodide) {
+      runCode();
+    }
+  }, [!!pyodide]);
 
   return (
     <div>

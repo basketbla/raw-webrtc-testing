@@ -1,9 +1,9 @@
 import { PyodideInterface } from "pyodide";
 import React, { useEffect, useRef, useState } from "react";
-import { v4 as uuidv4 } from "uuid";
 import FlaskEditor from "./components/FlaskEditor";
 import Messages from "./components/Messages";
 import { Button } from "./components/ui/button";
+import { Input } from "./components/ui/input";
 import {
   handleClientMessage,
   handleServerMessage,
@@ -34,7 +34,8 @@ const App: React.FC = () => {
 
   const startServer = () => {
     setIsServer(true);
-    const uuid = uuidv4();
+    // const uuid = uuidv4();
+    const uuid = "server mode";
     setSessionUUID(uuid);
 
     broadcastChannelRef.current = new BroadcastChannel(
@@ -67,6 +68,16 @@ const App: React.FC = () => {
     sendRequest({ type: "request", path: "/greet", method: "GET" });
   };
 
+  const resetSessionId = () => {
+    broadcastChannelRef.current?.close();
+    broadcastChannelRef.current = new BroadcastChannel(
+      `webrtc_channel_${sessionUUID}`
+    );
+    setupWebRTCConnection(broadcastChannelRef.current, "server", (data) => {
+      handleServerMessage(JSON.parse(data), myPiodide);
+    });
+  };
+
   return (
     <div className="container mx-auto">
       <h1 className="text-3xl font-bold">WebRTC Flask Editor</h1>
@@ -78,7 +89,17 @@ const App: React.FC = () => {
       {isServer ? (
         <>
           <p>
-            Server is running. Session ID: <strong>{sessionUUID}</strong>
+            Server is running. Session ID:{" "}
+            <div className="flex flex-row">
+              <Input
+                type="text"
+                placeholder="Enter Session Name"
+                value={sessionUUID}
+                onChange={(e) => setSessionUUID(e.target.value)}
+                className="border p-2"
+              />
+              <Button onClick={resetSessionId}>Reset Session ID</Button>
+            </div>
           </p>
           <p>Waiting for client requests...</p>
         </>
