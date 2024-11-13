@@ -30,9 +30,28 @@ wss.on("connection", (ws) => {
 
     switch (message.type) {
       case "register":
-        // Register the server with a name
-        servers.set(message.serverName, { ws, name: message.serverName });
-        console.log(`Server registered: ${message.serverName}`);
+        // Check if a server with the same name already exists
+        if (servers.has(message.serverName)) {
+          ws.send(
+            JSON.stringify({
+              type: "error",
+              message: `Server with name "${message.serverName}" already exists.`,
+            })
+          );
+          console.log(
+            `Registration failed: Server with name "${message.serverName}" already exists.`
+          );
+        } else {
+          // Register the server with the unique name
+          servers.set(message.serverName, { ws, name: message.serverName });
+          ws.send(
+            JSON.stringify({
+              type: "ok",
+              message: "Server registered successfully.",
+            })
+          );
+          console.log(`Server registered: ${message.serverName}`);
+        }
         break;
 
       case "search":

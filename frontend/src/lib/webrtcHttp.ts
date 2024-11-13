@@ -22,11 +22,17 @@ export async function initializePyodide(): Promise<PyodideInterface> {
     indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.3/full/",
   });
   console.log("Pyodide loaded.");
+
+  // If we need packages:
+  await pyodide.loadPackage("micropip");
+  const micropip = pyodide.pyimport("micropip");
+  await micropip.install("flask");
+
   return pyodide;
 }
 
 export function setupClientWebsocketConnection(clientId: string) {
-  connectToSignalingServer("", "client", clientId);
+  connectToSignalingServer("", "client", undefined, clientId);
 }
 
 export function setupWebRTCConnection(
@@ -34,13 +40,14 @@ export function setupWebRTCConnection(
   serverName: string,
   clientId: string,
   role: "server" | "client",
-  handleResponse: (data: string) => void
+  handleResponse: (data: string) => void,
+  setSatus?: (status: "initializing" | "live" | "failed") => void
 ) {
   peerConnection = new RTCPeerConnection();
 
   // Choose signaling method
   if (signalingMethod === "websocket" && role === "server") {
-    connectToSignalingServer(serverName, "server");
+    connectToSignalingServer(serverName, "server", setSatus);
   } else {
     broadcastChannel = new BroadcastChannel(`webrtc_channel_${serverName}`);
   }
@@ -233,6 +240,7 @@ let signalingSocket: WebSocket | null = null;
 function connectToSignalingServer(
   serverName: string,
   role: "server" | "client",
+  setStatus?: (status: "initializing" | "live" | "failed") => void,
   clientId?: string
 ) {
   signalingSocket = new WebSocket(SIGNAL_SERVER_URL);
@@ -240,6 +248,10 @@ function connectToSignalingServer(
   signalingSocket.onopen = () => {
     console.log("Connected to signaling server");
     if (role === "server") {
+      // Set state to initializing when trying to register
+      if (setStatus) {
+        setStatus("initializing");
+      }
       sendSignalingMessage({ type: "register", serverName: serverName });
     }
   };
@@ -248,11 +260,31 @@ function connectToSignalingServer(
     console.log("Received message from signaling server:");
     console.log(event);
     const message = JSON.parse(event.data);
-    handleSignalingMessage(message, role, clientId ?? "");
+
+    // Handle registration responses specifically
+    if (role === "server" && message.type === "ok") {
+      console.log("Server registered successfully.");
+      if (setStatus) {
+        setStatus("live"); // Set status to live if registration is successful
+      }
+    } else if (role === "server" && message.type === "error") {
+      console.error(`Error: ${message.message}`);
+      if (setStatus) {
+        setStatus("failed"); // Set status to failed if registration fails
+      }
+    } else {
+      handleSignalingMessage(message, role, clientId ?? "");
+    }
   };
 
   signalingSocket.onclose = () => {
     console.log("Disconnected from signaling server");
+    // Optionally set status to failed if the connection drops unexpectedly
+    if (role === "server") {
+      if (setStatus) {
+        setStatus("failed");
+      }
+    }
   };
 }
 

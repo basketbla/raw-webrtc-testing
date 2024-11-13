@@ -140,7 +140,7 @@ const ClientComponent: React.FC<ClientComponentProps> = () => {
           <h3 className="text-lg font-semibold mb-2">
             Request/Response History
           </h3>
-          <div className="space-y-2">
+          <div className="space-y-2 flex flex-col-reverse">
             {history.map((entry, index) => (
               <div key={index} className="border rounded p-2 bg-gray-100">
                 <p className="font-semibold">
