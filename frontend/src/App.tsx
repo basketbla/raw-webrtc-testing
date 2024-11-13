@@ -21,9 +21,9 @@ const App: React.FC = () => {
 
   return (
     <div className="container mx-auto">
-      <h1 className="text-3xl font-bold">WebRTC Flask Editor</h1>
+      <h1 className="text-3xl font-bold">Flask over WebRTC</h1>
       {pyodide != null ? (
-        <div className="flex flex-row gap-3 my-4">
+        <div className="flex flex-row gap-3 my-4 mb-2">
           <Button onClick={() => setIsServer(true)}>Start Server</Button>
           <Button onClick={() => setIsServer(false)}>Start Client</Button>
         </div>

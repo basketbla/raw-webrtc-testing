@@ -8,7 +8,8 @@ import {
   setupWebRTCConnection,
 } from "@/lib/webrtcHttp";
 import Editor from "@monaco-editor/react"; // Text editor for request body
-import React, { useRef, useState } from "react";
+import React, { useState } from "react";
+import { Label } from "./ui/label";
 import {
   Select,
   SelectContent,
@@ -18,6 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./ui/select";
+import { Switch } from "./ui/switch";
 
 interface ClientComponentProps {}
 
@@ -28,23 +30,24 @@ const ClientComponent: React.FC<ClientComponentProps> = () => {
   const [body, setBody] = useState(""); // Request body
   const [history, setHistory] = useState<
     { type: "request" | "response"; content: string }[]
-  >([]); // Request/response history
-
-  const broadcastChannelRef = useRef<BroadcastChannel>();
+  >([]);
+  const [localOnly, setLocalOnly] = useState(false);
 
   const startClient = () => {
     if (clientUUID) {
-      broadcastChannelRef.current = new BroadcastChannel(
-        `webrtc_channel_${clientUUID}`
+      setupWebRTCConnection(
+        localOnly ? "broadcast" : "websocket",
+        clientUUID,
+        "client",
+        (data) => {
+          handleClientMessage(data, (response) =>
+            setHistory((prev) => [
+              ...prev,
+              { type: "response", content: response },
+            ])
+          );
+        }
       );
-      setupWebRTCConnection(broadcastChannelRef.current, "client", (data) => {
-        handleClientMessage(data, (response) =>
-          setHistory((prev) => [
-            ...prev,
-            { type: "response", content: response },
-          ])
-        );
-      });
       console.log("Client connected to server with UUID:", clientUUID);
     } else {
       console.error("Client UUID is not provided.");
@@ -68,6 +71,10 @@ const ClientComponent: React.FC<ClientComponentProps> = () => {
   return (
     <div>
       <h2 className="text-xl font-bold">Client Mode</h2>
+      <div className="flex items-center space-x-2">
+        <Switch checked={localOnly} onCheckedChange={setLocalOnly} />
+        <Label>Local only</Label>
+      </div>
       <div className="my-4">
         {/* Session ID Input */}
         <Input
