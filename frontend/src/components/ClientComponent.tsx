@@ -5,10 +5,12 @@ import {
   handleClientMessage,
   RequestMessage,
   sendRequest,
+  setupClientWebsocketConnection,
   setupWebRTCConnection,
 } from "@/lib/webrtcHttp";
 import Editor from "@monaco-editor/react"; // Text editor for request body
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import { v4 as uuidv4 } from "uuid";
 import { Label } from "./ui/label";
 import {
   Select,
@@ -23,8 +25,10 @@ import { Switch } from "./ui/switch";
 
 interface ClientComponentProps {}
 
+const CLIENT_ID = uuidv4();
+
 const ClientComponent: React.FC<ClientComponentProps> = () => {
-  const [clientUUID, setClientUUID] = useState("");
+  const [serverName, setServerName] = useState(uuidv4());
   const [method, setMethod] = useState("GET"); // Dropdown for request method
   const [endpoint, setEndpoint] = useState("/"); // Endpoint text
   const [body, setBody] = useState(""); // Request body
@@ -33,11 +37,16 @@ const ClientComponent: React.FC<ClientComponentProps> = () => {
   >([]);
   const [localOnly, setLocalOnly] = useState(false);
 
+  useEffect(() => {
+    setupClientWebsocketConnection(CLIENT_ID);
+  }, []);
+
   const startClient = () => {
-    if (clientUUID) {
+    if (serverName) {
       setupWebRTCConnection(
         localOnly ? "broadcast" : "websocket",
-        clientUUID,
+        serverName,
+        CLIENT_ID,
         "client",
         (data) => {
           handleClientMessage(data, (response) =>
@@ -48,7 +57,7 @@ const ClientComponent: React.FC<ClientComponentProps> = () => {
           );
         }
       );
-      console.log("Client connected to server with UUID:", clientUUID);
+      console.log("Client connected to server with UUID:", serverName);
     } else {
       console.error("Client UUID is not provided.");
     }
@@ -80,8 +89,8 @@ const ClientComponent: React.FC<ClientComponentProps> = () => {
         <Input
           type="text"
           placeholder="Enter Session ID"
-          value={clientUUID}
-          onChange={(e) => setClientUUID(e.target.value)}
+          value={serverName}
+          onChange={(e) => setServerName(e.target.value)}
           className="border p-2 mb-2"
         />
         <Button onClick={startClient} className="mb-4">

@@ -6,9 +6,10 @@
   "devDependencies": {
     "@types/node": "^22.9.0",
     "@types/ws": "^8.5.13",
+    "nodemon": "^3.1.7",
     "ts-node": "^10.9.2"
   },
   "scripts": {
-    "start": "ts-node src/index.ts"
+    "start": "nodemon --watch 'src/**/*.ts' --exec 'ts-node' src/index.ts"
   }
 }

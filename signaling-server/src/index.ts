@@ -2,12 +2,24 @@ import WebSocket, { WebSocketServer } from "ws";
 
 // Message types
 type Message =
-  | { type: "register"; name: string }
-  | { type: "search"; name: string }
-  | { type: "ready"; name: string }
-  | { type: "ice-candidate"; candidate: any; name: string };
+  | { type: "register"; serverName: string }
+  | { type: "search"; serverName: string }
+  | { type: "ready"; serverName: string; clientId: string }
+  | { type: "offer"; offer: any; clientId: string; serverName: string }
+  | { type: "answer"; answer: any; serverName: string; clientId: string }
+  | {
+      type: "ice-candidate";
+      candidate: any;
+      target: "server" | "client";
+      clientId: string;
+      serverName: string;
+    };
 
 interface Client {
+  ws: WebSocket;
+}
+
+interface Server {
   ws: WebSocket;
   name: string;
 }
@@ -17,50 +29,97 @@ const wss = new WebSocketServer({ port: PORT });
 
 console.log(`Signaling server is listening on ws://localhost:${PORT}`);
 
+// FUCK okay im getting tripped up so here's how I'm doing it.
+// Servers are mapped by name. Clients are mapped by id. Sorry.
+const servers: Map<string, Server> = new Map();
 const clients: Map<string, Client> = new Map();
 
 wss.on("connection", (ws) => {
-  console.log("New client connected");
+  console.log("New connection");
 
   ws.on("message", (data) => {
     const message = JSON.parse(data.toString()) as Message;
 
+    console.log("Received message:", message);
+
     switch (message.type) {
       case "register":
-        // Register the client with a name
-        clients.set(message.name, { ws, name: message.name });
-        console.log(`Server registered: ${message.name}`);
+        // Register the server with a name
+        servers.set(message.serverName, { ws, name: message.serverName });
+        console.log(`Server registered: ${message.serverName}`);
         break;
 
       case "search":
         // Check if the requested server name exists and inform the client
-        const client = clients.get(message.name);
-        if (client) {
-          ws.send(JSON.stringify({ type: "found", name: message.name }));
+        const server = servers.get(message.serverName);
+        if (server) {
+          ws.send(JSON.stringify({ type: "found", name: message.serverName }));
         } else {
-          ws.send(JSON.stringify({ type: "not-found", name: message.name }));
+          ws.send(
+            JSON.stringify({ type: "not-found", name: message.serverName })
+          );
         }
         break;
 
       case "ready":
-        // Send "ready" message to the specific server
-        const targetServer = clients.get(message.name);
+        // Register the client with its id
+        clients.set(message.clientId, { ws });
+        console.log(`Client registered: ${message.clientId}`);
+
+        // Inform the server that the client is ready
+        const targetServer = servers.get(message.serverName);
         if (targetServer) {
           targetServer.ws.send(
-            JSON.stringify({ type: "ready", from: message.name })
+            JSON.stringify({ type: "ready", from: message.clientId })
           );
+        }
+        break;
+
+      case "offer":
+        // Forward the offer to the specific client
+        const offerClient = clients.get(message.clientId);
+        if (offerClient) {
+          offerClient.ws.send(
+            JSON.stringify({
+              type: "offer",
+              offer: message.offer,
+              from: message.serverName,
+            })
+          );
+          console.log(`Offer sent to client: ${message.clientId}`);
+        }
+        break;
+
+      case "answer":
+        // Forward the answer to the specific server
+        const answerServer = servers.get(message.serverName);
+        if (answerServer) {
+          answerServer.ws.send(
+            JSON.stringify({
+              type: "answer",
+              answer: message.answer,
+              from: message.clientId,
+            })
+          );
+          console.log(`Answer sent to server: ${message.serverName}`);
         }
         break;
 
       case "ice-candidate":
         // Relay ICE candidates between server and client
-        const target = clients.get(message.name);
-        if (target) {
-          target.ws.send(
+        const iceTarget =
+          message.target === "server"
+            ? servers.get(message.serverName)
+            : clients.get(message.clientId);
+        if (iceTarget) {
+          iceTarget.ws.send(
             JSON.stringify({
               type: "ice-candidate",
               candidate: message.candidate,
-              from: message.name,
+              from:
+                message.target === "server"
+                  ? message.serverName
+                  : message.clientId,
             })
           );
         }
@@ -69,7 +128,14 @@ wss.on("connection", (ws) => {
   });
 
   ws.on("close", () => {
-    // Remove disconnected clients from the map
+    // Remove disconnected clients and servers from their respective maps
+    servers.forEach((server, name) => {
+      if (server.ws === ws) {
+        servers.delete(name);
+        console.log(`Server disconnected: ${name}`);
+      }
+    });
+
     clients.forEach((client, name) => {
       if (client.ws === ws) {
         clients.delete(name);

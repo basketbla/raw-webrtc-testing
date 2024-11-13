@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { handleServerMessage, setupWebRTCConnection } from "@/lib/webrtcHttp";
 import { PyodideInterface } from "pyodide";
 import React, { useEffect, useState } from "react";
+import { v4 as uuidv4 } from "uuid";
 import { Label } from "./ui/label";
 import { Switch } from "./ui/switch";
 
@@ -13,24 +14,27 @@ interface ServerComponentProps {
 }
 
 const ServerComponent: React.FC<ServerComponentProps> = ({ pyodide }) => {
-  const [sessionUUID, setSessionUUID] = useState("server-mode");
+  const [serverName, setServerName] = useState<string>();
   const [localOnly, setLocalOnly] = useState(false);
 
   const startServer = () => {
+    const uuid = uuidv4();
+    setServerName(uuid);
     setupWebRTCConnection(
       localOnly ? "broadcast" : "websocket",
-      sessionUUID,
+      uuid,
+      uuid,
       "server",
       (data) => {
         handleServerMessage(JSON.parse(data), pyodide);
       }
     );
-    console.log("Server mode enabled with UUID:", sessionUUID);
+    console.log("Server mode enabled with UUID:", uuid);
   };
 
   useEffect(() => {
     startServer();
-  }, [sessionUUID, localOnly]);
+  }, [localOnly]);
 
   return (
     <div>
@@ -44,8 +48,8 @@ const ServerComponent: React.FC<ServerComponentProps> = ({ pyodide }) => {
         <Input
           type="text"
           placeholder="Enter Session Name"
-          value={sessionUUID}
-          onChange={(e) => setSessionUUID(e.target.value)}
+          value={serverName}
+          onChange={(e) => setServerName(e.target.value)}
           className="border p-2"
         />
         <Button onClick={startServer}>Reset Session ID</Button>

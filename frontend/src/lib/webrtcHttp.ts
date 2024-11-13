@@ -12,6 +12,22 @@ interface ResponseMessage {
   data: any;
 }
 
+// Copied from server
+// TODO: shared types
+type WebsocketMessage =
+  | { type: "register"; serverName: string }
+  | { type: "search"; serverName: string }
+  | { type: "ready"; serverName: string; clientId: string }
+  | { type: "offer"; offer: any; clientId: string; serverName: string }
+  | { type: "answer"; answer: any; serverName: string; clientId: string }
+  | {
+      type: "ice-candidate";
+      candidate: any;
+      target: "server" | "client";
+      clientId: string;
+      serverName: string;
+    };
+
 let peerConnection: RTCPeerConnection;
 let dataChannel: RTCDataChannel | null = null;
 let broadcastChannel: BroadcastChannel;
@@ -24,19 +40,24 @@ export async function initializePyodide(): Promise<PyodideInterface> {
   return pyodide;
 }
 
+export function setupClientWebsocketConnection(clientId: string) {
+  connectToSignalingServer("", "client", clientId);
+}
+
 export function setupWebRTCConnection(
   signalingMethod: "broadcast" | "websocket",
-  uuid: string,
+  serverName: string,
+  clientId: string,
   role: "server" | "client",
   handleResponse: (data: string) => void
 ) {
   peerConnection = new RTCPeerConnection();
 
   // Choose signaling method
-  if (signalingMethod === "websocket") {
-    connectToSignalingServer(uuid); // Initialize WebSocket connection
+  if (signalingMethod === "websocket" && role === "server") {
+    connectToSignalingServer(serverName, "server");
   } else {
-    broadcastChannel = new BroadcastChannel(`webrtc_channel_${uuid}`);
+    broadcastChannel = new BroadcastChannel(`webrtc_channel_${serverName}`);
   }
 
   if (role === "server") {
@@ -52,7 +73,7 @@ export function setupWebRTCConnection(
         console.log(event);
         if (event.data === "ready") {
           console.log("Client is ready, server initiating connection...");
-          createOffer(broadcastChannel, "broadcast", uuid);
+          createOffer(broadcastChannel, "broadcast", serverName, "");
         } else {
           const { type, answer, candidate } = event.data;
 
@@ -82,7 +103,12 @@ export function setupWebRTCConnection(
   } else {
     // Client ready for the offer
     if (signalingMethod === "websocket") {
-      sendSignalingMessage({ type: "ready", uuid });
+      console.log("sending ready message");
+      sendSignalingMessage({
+        type: "ready",
+        serverName: serverName,
+        clientId: clientId,
+      });
     } else {
       broadcastChannel.postMessage("ready");
     }
@@ -101,7 +127,7 @@ export function setupWebRTCConnection(
           candidate: candidate.toJSON(),
         });
       } else {
-        sendSignalingMessage({ type: "ice-candidate", candidate, uuid });
+        // I thiiiink this is just for broadcast channel so websocket case doesn't matter. Not sure.
       }
     }
   };
@@ -125,16 +151,22 @@ export function setupWebRTCConnection(
 }
 
 function createOffer(
-  broadcastChannel: BroadcastChannel,
+  broadcastChannel: BroadcastChannel | null,
   signalingMethod: "broadcast" | "websocket",
-  uuid: string
+  serverName: string,
+  clientId: string
 ) {
   peerConnection.createOffer().then((offer) => {
     peerConnection.setLocalDescription(offer);
     if (signalingMethod === "broadcast") {
-      broadcastChannel.postMessage({ type: "offer", offer });
+      broadcastChannel!.postMessage({ type: "offer", offer });
     } else {
-      sendSignalingMessage({ type: "offer", offer, uuid });
+      sendSignalingMessage({
+        type: "offer",
+        offer: offer,
+        serverName: serverName,
+        clientId: clientId,
+      });
     }
   });
 }
@@ -203,17 +235,24 @@ const SIGNAL_SERVER_URL = "ws://localhost:8080";
 let signalingSocket: WebSocket | null = null;
 
 // Initialize WebSocket connection to the signaling server
-function connectToSignalingServer(uuid: string) {
+function connectToSignalingServer(
+  serverName: string,
+  role: "server" | "client",
+  clientId?: string
+) {
   signalingSocket = new WebSocket(SIGNAL_SERVER_URL);
 
   signalingSocket.onopen = () => {
     console.log("Connected to signaling server");
-    signalingSocket?.send(JSON.stringify({ type: "register", uuid }));
+    if (role === "server") {
+      sendSignalingMessage({ type: "register", serverName: serverName });
+    }
   };
 
   signalingSocket.onmessage = (event) => {
+    console.log(event);
     const message = JSON.parse(event.data);
-    handleSignalingMessage(message);
+    handleSignalingMessage(message, role, clientId ?? "");
   };
 
   signalingSocket.onclose = () => {
@@ -222,14 +261,27 @@ function connectToSignalingServer(uuid: string) {
 }
 
 // Function to handle signaling messages
-function handleSignalingMessage(message: any) {
+function handleSignalingMessage(
+  message: any,
+  role: "server" | "client",
+  clientId: string
+) {
   const { type, offer, answer, candidate } = message;
+
+  if (type === "ready" && role === "server") {
+    createOffer(null, "websocket", message.serverName, message.from);
+  }
 
   if (type === "offer" && peerConnection) {
     peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
     peerConnection.createAnswer().then((answer) => {
       peerConnection.setLocalDescription(answer);
-      signalingSocket?.send(JSON.stringify({ type: "answer", answer }));
+      sendSignalingMessage({
+        type: "answer",
+        answer,
+        serverName: message.from as string,
+        clientId: clientId,
+      });
     });
   } else if (type === "answer" && peerConnection) {
     peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
@@ -239,8 +291,13 @@ function handleSignalingMessage(message: any) {
 }
 
 // Send message over the signaling server
-function sendSignalingMessage(message: any) {
+function sendSignalingMessage(message: WebsocketMessage) {
+  console.log("in send signal message");
+  console.log(signalingSocket);
+  console.log(signalingSocket?.readyState);
   if (signalingSocket && signalingSocket.readyState === WebSocket.OPEN) {
+    console.log("actually sending message");
+    console.log(message);
     signalingSocket.send(JSON.stringify(message));
   }
 }
