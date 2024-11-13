@@ -14,22 +14,20 @@ interface ServerComponentProps {
 }
 
 const ServerComponent: React.FC<ServerComponentProps> = ({ pyodide }) => {
-  const [serverName, setServerName] = useState<string>();
+  const [serverName, setServerName] = useState<string>(uuidv4());
   const [localOnly, setLocalOnly] = useState(false);
 
   const startServer = () => {
-    const uuid = uuidv4();
-    setServerName(uuid);
     setupWebRTCConnection(
       localOnly ? "broadcast" : "websocket",
-      uuid,
-      uuid,
+      serverName,
+      serverName,
       "server",
       (data) => {
         handleServerMessage(JSON.parse(data), pyodide);
       }
     );
-    console.log("Server mode enabled with UUID:", uuid);
+    console.log("Server mode enabled with UUID:", serverName);
   };
 
   useEffect(() => {

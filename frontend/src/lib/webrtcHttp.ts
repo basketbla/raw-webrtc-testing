@@ -101,6 +101,13 @@ export function setupWebRTCConnection(
       return;
     }
   } else {
+    peerConnection.ondatachannel = (event) => {
+      console.log("on data channel");
+      console.log(event);
+      dataChannel = event.channel;
+      setupDataChannel(handleResponse);
+    };
+
     // Client ready for the offer
     if (signalingMethod === "websocket") {
       console.log("sending ready message");
@@ -112,11 +119,6 @@ export function setupWebRTCConnection(
     } else {
       broadcastChannel.postMessage("ready");
     }
-
-    peerConnection.ondatachannel = (event) => {
-      dataChannel = event.channel;
-      setupDataChannel(handleResponse);
-    };
   }
 
   peerConnection.onicecandidate = ({ candidate }) => {
@@ -127,7 +129,15 @@ export function setupWebRTCConnection(
           candidate: candidate.toJSON(),
         });
       } else {
-        // I thiiiink this is just for broadcast channel so websocket case doesn't matter. Not sure.
+        // Send ice candidate to signaling server?
+        console.log("sending ice candidate");
+        sendSignalingMessage({
+          type: "ice-candidate",
+          candidate: candidate,
+          target: role === "server" ? "client" : "server",
+          clientId: clientId,
+          serverName: serverName,
+        });
       }
     }
   };

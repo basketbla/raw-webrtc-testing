@@ -28,7 +28,7 @@ interface ClientComponentProps {}
 const CLIENT_ID = uuidv4();
 
 const ClientComponent: React.FC<ClientComponentProps> = () => {
-  const [serverName, setServerName] = useState(uuidv4());
+  const [serverName, setServerName] = useState<string>("");
   const [method, setMethod] = useState("GET"); // Dropdown for request method
   const [endpoint, setEndpoint] = useState("/"); // Endpoint text
   const [body, setBody] = useState(""); // Request body
