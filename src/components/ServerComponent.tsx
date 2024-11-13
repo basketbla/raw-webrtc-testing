@@ -8,13 +8,9 @@ import React, { useEffect, useRef, useState } from "react";
 
 interface ServerComponentProps {
   pyodide: PyodideInterface | null;
-  addMessage: (message: string) => void;
 }
 
-const ServerComponent: React.FC<ServerComponentProps> = ({
-  pyodide,
-  addMessage,
-}) => {
+const ServerComponent: React.FC<ServerComponentProps> = ({ pyodide }) => {
   const [sessionUUID, setSessionUUID] = useState("server-mode");
   const broadcastChannelRef = useRef<BroadcastChannel>();
 

@@ -4,6 +4,7 @@ export interface RequestMessage {
   type: "request";
   path: string;
   method: string;
+  body: string | null;
 }
 
 interface ResponseMessage {
@@ -131,7 +132,7 @@ export function handleClientMessage(
 ) {
   const message = JSON.parse(data);
   if (message.type === "response") {
-    addMessage(`Response from server: ${message.data}`);
+    addMessage(`${message.data}`);
   }
 }
 
