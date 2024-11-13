@@ -1,25 +1,11 @@
+import { Message } from "@shared/types";
 import WebSocket, { WebSocketServer } from "ws";
 
-// Message types
-type Message =
-  | { type: "register"; serverName: string }
-  | { type: "search"; serverName: string }
-  | { type: "ready"; serverName: string; clientId: string }
-  | { type: "offer"; offer: any; clientId: string; serverName: string }
-  | { type: "answer"; answer: any; serverName: string; clientId: string }
-  | {
-      type: "ice-candidate";
-      candidate: any;
-      target: "server" | "client";
-      clientId: string;
-      serverName: string;
-    };
-
-interface Client {
+export interface Client {
   ws: WebSocket;
 }
 
-interface Server {
+export interface Server {
   ws: WebSocket;
   name: string;
 }

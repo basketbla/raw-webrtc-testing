@@ -80,7 +80,7 @@ const ClientComponent: React.FC<ClientComponentProps> = () => {
   return (
     <div>
       <h2 className="text-xl font-bold">Client Mode</h2>
-      <div className="flex items-center space-x-2">
+      <div className="flex items-center space-x-2 my-2">
         <Switch checked={localOnly} onCheckedChange={setLocalOnly} />
         <Label>Local only</Label>
       </div>

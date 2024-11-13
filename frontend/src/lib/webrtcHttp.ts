@@ -1,3 +1,4 @@
+import { Message as WebsocketMessage } from "@shared/types";
 import { loadPyodide, PyodideInterface } from "pyodide";
 
 export interface RequestMessage {
@@ -11,22 +12,6 @@ interface ResponseMessage {
   type: "response";
   data: any;
 }
-
-// Copied from server
-// TODO: shared types
-type WebsocketMessage =
-  | { type: "register"; serverName: string }
-  | { type: "search"; serverName: string }
-  | { type: "ready"; serverName: string; clientId: string }
-  | { type: "offer"; offer: any; clientId: string; serverName: string }
-  | { type: "answer"; answer: any; serverName: string; clientId: string }
-  | {
-      type: "ice-candidate";
-      candidate: any;
-      target: "server" | "client";
-      clientId: string;
-      serverName: string;
-    };
 
 let peerConnection: RTCPeerConnection;
 let dataChannel: RTCDataChannel | null = null;

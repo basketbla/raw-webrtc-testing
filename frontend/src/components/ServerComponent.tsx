@@ -37,7 +37,7 @@ const ServerComponent: React.FC<ServerComponentProps> = ({ pyodide }) => {
   return (
     <div>
       <h2 className="text-xl font-bold">Server Mode</h2>
-      <div className="flex items-center space-x-2">
+      <div className="flex items-center space-x-2 my-2">
         <Switch checked={localOnly} onCheckedChange={setLocalOnly} />
         <Label>Local only</Label>
       </div>
